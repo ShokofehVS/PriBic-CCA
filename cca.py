@@ -63,6 +63,7 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
 
         P_0 = party(0)
         P_1 = party(1)
+        P_2 = party(2)
 
         # Check input data
         data = check_array(data, dtype=int, copy=True)
@@ -81,30 +82,34 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
             # Generate secret shares of the input data
             rng  = np.random.default_rng(seed=42)
             in_0 = rng.integers(0, self.highest_range, size=(num_rows, num_cols), dtype="int64")
-            in_1 = data - in_0
+            in_1 = rng.integers(0, self.highest_range, size=(num_rows, num_cols), dtype="int64")
+            in_2 = data - in_0 - in_1
 
-            # Assign secret shares to parties
+            # Assign replicated secret shares to parties
             P_0.aij_0 = np.copy(in_0)
+            P_0.aij_1 = np.copy(in_1)
+
             P_1.aij_1 = np.copy(in_1)
+            P_1.aij_2 = np.copy(in_2)
+
+            P_2.aij_2 = np.copy(in_2)
+            P_2.aij_0 = np.copy(in_0)
 
             # Shape of inputs for both parties
             num_row_0, num_col_0 = in_0.shape
             num_row_1, num_col_1 = in_1.shape
+            num_row_2, num_col_2 = in_2.shape
 
             # Steps including single, multiple deletion/ addition
-            P_0.bij_0, P_1.bij_1, len_row  = (
-                self._multiple_node_deletion(P_0.aij_0, P_1.aij_1, self.msr_threshold, t_shareMSR, t_shareEval, t_muldel, t_size))
+            P_0.bij_0, P_1.bij_1, P_1.bij_2, len_row  = self._multiple_node_deletion(P_0, P_1, P_2, in_0, in_1, in_2,
+                                                                                     self.msr_threshold)
 
-            P_0.cij_0, P_1.cij_1, len_row, len_col  = (
-                self._single_node_deletion(P_0.bij_0, P_1.bij_1, len_row, self.msr_threshold,t_shareMSR, t_shareEval, t_sdel, t_size))
+            # P_0.cij_0, P_1.cij_1, len_row, len_col  = (
+            #     self._single_node_deletion(P_0.bij_0, P_1.bij_1, len_row, self.msr_threshold,t_shareMSR, t_shareEval, t_sdel, t_size))
+            #
+            # P_0.dij_0, P_1.dij_1, len_row, len_col = (
+            #     self._node_addition(P_0.cij_0, P_1.cij_1, in_0, in_1, len_row, len_col, t_shareMSR, t_shareEval, t_add,t_size))
 
-            P_0.dij_0, P_1.dij_1, len_row, len_col = (
-                self._node_addition(P_0.cij_0, P_1.cij_1, in_0, in_1, len_row, len_col, t_shareMSR, t_shareEval, t_add,t_size))
-
-            """with open('result_size.txt', 'w') as saveFile:
-                saveFile.write(str(P_0.dij_0) + "\n")
-                saveFile.write(str(P_1.dij_1) + "\n")
-            t_size.append(os.path.getsize("result_size.txt"))"""
 
             # Output shares then be reconstructed as the final matrix
             new_data = P_0.dij_0 + P_1.dij_1
@@ -125,15 +130,6 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
 
             biclusters.append(Bicluster(rows_indexes, cols_indexes))
 
-        with open('human_performance.txt', 'a') as saveFile:
-            saveFile.write("\n")
-            saveFile.write("-------------------------------------------------------------------------" + "\n")
-            # saveFile.write("Single node deletion :" + str(np.sum(t_sdel)) + "\n")
-            # saveFile.write("Multiple node deletion :" + str(np.sum(t_muldel)) + "\n")
-            # saveFile.write("Node addition :" + str(np.sum(t_add)) + "\n")
-            # saveFile.write("MSR :" + str(np.sum(t_shareMSR)) + "\n")
-            # saveFile.write("Eval :" + str(np.sum(t_shareEval)) + "\n")
-            saveFile.write("Communication size :" + str(np.mean(t_size)) + "\n")
 
         return Biclustering(biclusters)
 
@@ -247,36 +243,23 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
         return in_0, in_1, len_row, num_col_0
 
 
-    def _multiple_node_deletion(self, in_0, in_1, msr_thr,t_shareMSR, t_shareEval, t_muldel, t_size):
+    def _multiple_node_deletion(self, P_0, P_1, P_2, in_0, in_1, in_2, msr_thr):
         """Performs the multiple row/column deletion step (this is a direct implementation of the Algorithm 2 described
            in the original paper)"""
         # Secret shared inputs' shapes
-        t_muldel_0 = time.perf_counter()
-
         num_row_0, num_col_0 = in_0.shape
-        num_row_1, num_col_1 = in_1.shape
 
         # Initialization -- row size
         total_len_row = num_row_0
 
         # MSRs computation when NO nodes are removed (having exact rows/ columns length)
-        t_msr_0 = time.perf_counter()
-
-        msr_0, msr_1, row_msr_0, row_msr_1, col_msr_0, col_msr_1  = self._scores_before_steps(in_0, in_1,t_size)
-
-        t_msr_1 = time.perf_counter()
-        t_shareMSR.append(t_msr_1 - t_msr_0)
-
+        msr_0, msr_1, msr_2, row_msr_0, row_msr_1, row_msr_2, col_msr_0, col_msr_1, col_msr_2  = (
+            self._scores_before_steps(P_0, P_1, P_2, in_0, in_1, in_2))
 
         # STOP function -- Check whether the MSR is below or equal to threshold
-        t_eval_0 = time.perf_counter()
-
         stop_itr_0 = msr_thr - msr_0
         stop_itr_1 = msr_thr - msr_1
-        stop       = self.fss_evaluation(stop_itr_0, stop_itr_1, 1,t_size)
-
-        t_eval_1 = time.perf_counter()
-        t_shareEval.append(t_eval_1 - t_eval_0)
+        stop       = self.fss_evaluation(stop_itr_0, stop_itr_1, 1)
 
         if stop:
             # No nodes have been removed so return length of rows without change
@@ -322,37 +305,24 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
                 if num_col_0 >= self.data_min_cols:
                     pass
 
-                t_eval_1 = time.perf_counter()
-                t_shareEval.append(t_eval_1 - t_eval_0)
-
                 # Recalculate the scores (the columns by default have not been removed) to be used in stop function below
                 t_msr_0 = time.perf_counter()
 
                 msr_0, msr_1, row_msr_0, row_msr_1, col_msr_0, col_msr_1 =  (self._calculate_scores_del
                                                                              (in_0, in_1,
                                                                               total_len_row,
-                                                                              num_col_0,t_size))
-                t_msr_1 = time.perf_counter()
-                t_shareMSR.append(t_msr_1 - t_msr_0)
+                                                                              num_col_0))
 
                 # First stop function; check whether any nodes have been removed (equality of current, previous nodes)
-                t_eval_0 = time.perf_counter()
-
-                stop_con1 = self._equality_check(in_0, in_1, cp_in_0, cp_in_1,t_size)
+                stop_con1 = self._equality_check(in_0, in_1, cp_in_0, cp_in_1)
 
                 # Second stop function; check also the MSR is below/equal to threshold
                 stop_itr_0 = msr_thr - msr_0
                 stop_itr_1 = msr_thr - msr_1
-                stop_con2 = self.fss_evaluation(stop_itr_0, stop_itr_1, 1,t_size)
-
-                t_eval_1 = time.perf_counter()
-                t_shareEval.append(t_eval_1 - t_eval_0)
+                stop_con2 = self.fss_evaluation(stop_itr_0, stop_itr_1, 1)
 
                 # OR between the above-calculated stop functions
                 stop = stop_con1 or stop_con2
-
-        t_muldel_1 = time.perf_counter()
-        t_muldel.append(t_muldel_1 - t_muldel_0)
 
         return in_0, in_1, total_len_row
 
@@ -478,37 +448,24 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
                 return arg_max_res
 
 
-    def _scores_before_steps(self, in_0, in_1,t_size):
+    def _scores_before_steps(self, P0, P1, P2, in_0, in_1, in_2):
         """Calculate scores of the rows, of the columns and of the full data matrix before any steps"""
-        # Note that all means are converted to integers to avoid overflow
-        # Mean values
-        data_mean_0 = np.mean(in_0).astype(int);                        data_mean_1 = np.mean(in_1).astype(int)
-        row_means_0 = np.mean(in_0, axis=1).astype(int);                row_means_1 = np.mean(in_1, axis=1).astype(int)
-        col_means_0 = np.mean(in_0, axis=0).astype(int);                col_means_1 = np.mean(in_1, axis=0).astype(int)
+        # Mean values for whole data, rows and columns
+        mu_ij_0, mu_r_0, mu_c_0, mu_ij_1, mu_r_1, mu_c_1, mu_ij_2, mu_r_2, mu_c_2 = self.secMean(P0, P1, P2,
+                                                                                                 in_0, in_1, in_2)
 
-        # Residues
-        residues_0 = (in_0 - row_means_0[:, np.newaxis] - col_means_0 + data_mean_0)
-        residues_1 = (in_1 - row_means_1[:, np.newaxis] - col_means_1 + data_mean_1)
+        # Residue for the input matrix
+        r_ij_0, r_ij_1, r_ij_2 = self.secResidue(P0, P1, P2, in_0, in_1, in_2, mu_ij_0, mu_r_0, mu_c_0,
+                                                          mu_ij_1, mu_r_1, mu_c_1, mu_ij_2, mu_r_2, mu_c_2)
 
-        # Continue doing squaring by local power of 2 residue and joint multiplication
-        squared_residue_0 = np.copy(residues_0)
-        squared_residue_1 = np.copy(residues_1)
+        # Continue doing squaring by joint multiplication
+        r2_ij_0, r2_ij_1, r2_ij_2 = self.secSquaring(P0, P1, P2, r_ij_0, r_ij_1, r_ij_2)
 
-        for idxr in range(residues_0.shape[0]):
-            squared_residue_0[idxr], squared_residue_1[idxr] = self.secSquare_vector(residues_0[idxr],
-                                                                                     residues_1[idxr],t_size)
+        # MSRs for whole data, rows and columns
+        h_ij_0, h_r_0, h_c_0, h_ij_1, h_r_1, h_c_1, h_ij_2, h_r_2, h_c_2 = self.secMean(P0, P1, P2,
+                                                                                        r2_ij_0, r2_ij_1, r2_ij_2)
 
-        # MSRs computations
-        msr_0     = np.mean(squared_residue_0).astype(int)
-        msr_1     = np.mean(squared_residue_1).astype(int)
-
-        row_msr_0 = np.mean(squared_residue_0, axis=1).astype(int)
-        row_msr_1 = np.mean(squared_residue_1, axis=1).astype(int)
-
-        col_msr_0 = np.mean(squared_residue_0, axis=0).astype(int)
-        col_msr_1 = np.mean(squared_residue_1, axis=0).astype(int)
-
-        return msr_0, msr_1, row_msr_0, row_msr_1, col_msr_0, col_msr_1
+        return h_ij_0, h_r_0, h_c_0, h_ij_1, h_r_1, h_c_1, h_ij_2, h_r_2, h_c_2
 
 
     def _calculate_scores_del(self, in_0, in_1, len_row, num_col_0,t_size):
@@ -737,50 +694,70 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
         return r_eq
 
 
-    def secSquare_vector(self, share_00, share_01,t_size):
-        """Generation of Beaver Triples and secured multiplication for doing squaring."""
-        # Input parameters including vectors, threshold, and length of matrix
-        theta = 0
-        z_0 = share_00.astype(funshade.DTYPE)
-        z_1 = share_01.astype(funshade.DTYPE)
-        K = len(z_0)
+    def secMean(self, P0, P1, P2, in_0, in_1, in_2):
+        """Secured mean based on RSS consisting of local linear and non-linear functions."""
+        # Get mean values for whole matrix, row-wise and column-wise
+        P0.mu_ij_0 = np.mean(in_0).astype(int)
+        P0.mu_r_0  = np.mean(in_0, axis=1).astype(int)
+        P0.mu_c_0  = np.mean(in_0, axis=0).astype(int)
 
-        # Create parties
-        class party:
-            def __init__(self, j: int):
-                self.j = j
+        P1.mu_ij_1 = np.mean(in_1).astype(int)
+        P1.mu_r_1  = np.mean(in_1, axis=1).astype(int)
+        P1.mu_c_1  = np.mean(in_1, axis=0).astype(int)
 
-        P0 = party(0)
-        P1 = party(1)
+        P2.mu_ij_2 = np.mean(in_2).astype(int)
+        P2.mu_r_2  = np.mean(in_2, axis=1).astype(int)
+        P2.mu_c_2  = np.mean(in_2, axis=0).astype(int)
 
-        # Distribute secret share values
-        P0.z_j = z_0;                       P1.z_j = z_1
+        # RSS shares for each parties
+        P0.mu_ij_1 = np.copy(P1.mu_ij_1)
+        P0.mu_r_1  = np.copy(P1.mu_r_1)
+        P0.mu_c_1  = np.copy(P1.mu_c_1)
 
-        # Generate beaver triples for vectors
-        a_hat_0, a_hat_1, b_hat_0, b_hat_1 = funshade.beaverTriple_square(K, theta)
+        P1.mu_ij_2 = np.copy(P2.mu_ij_2)
+        P1.mu_r_2  = np.copy(P2.mu_r_2)
+        P1.mu_c_2  = np.copy(P2.mu_c_2)
 
-        # # Distribute randomness to (P0, P1)
-        P0.hat_a_j = a_hat_0;               P1.hat_a_j = a_hat_1
-        P0.hat_b_j = b_hat_0;               P1.hat_b_j = b_hat_1
+        P2.mu_ij_0 = np.copy(P0.mu_ij_0)
+        P2.mu_r_0  = np.copy(P0.mu_r_0)
+        P2.mu_c_0  = np.copy(P0.mu_c_0)
 
-        # Find e
-        P0.hat_e_j = funshade.share_square(K, P0.z_j, P0.hat_a_j)
-        P1.hat_e_j = funshade.share_square(K, P1.z_j, P1.hat_a_j)
+        return P0.mu_ij_0, P0.mu_r_0, P0.mu_c_0, P1.mu_ij_1, P1.mu_r_1, P1.mu_c_1, P2.mu_ij_2, P2.mu_r_2, P2.mu_c_2
 
-        # Reconstruct e in one round of communication
-        P0.e_j = P0.hat_e_j + P1.hat_e_j
-        P1.e_j = P0.hat_e_j + P1.hat_e_j
 
-        with open('result_size.txt', 'w') as saveFile:
-            saveFile.write(str(P0.hat_e_j) + "\n")
-            saveFile.write(str(P1.hat_e_j) + "\n")
-        t_size.append(os.path.getsize("result_size.txt"))
+    def secResidue(self, P0, P1, P2, in_0, in_1, in_2, mu_ij_0, mu_r_0, mu_c_0, mu_ij_1, mu_r_1, mu_c_1,
+                   mu_ij_2, mu_r_2, mu_c_2):
+        """Secured residue based on RSS consisting of local linear functions."""
+        # Find residue with given mean values
+        P0.r_ij_0 =  in_0 - mu_r_0[:, np.newaxis] - mu_c_0 + mu_ij_0
 
-        # Now square with beaver triples
-        P0.sq_j = funshade.square(K, P0.j, P0.e_j, P0.hat_a_j, P0.hat_b_j)
-        P1.sq_j = funshade.square(K, P1.j, P1.e_j, P1.hat_a_j, P1.hat_b_j)
+        P1.r_ij_1 =  in_1 - mu_r_1[:, np.newaxis] - mu_c_1 + mu_ij_1
 
-        return P0.sq_j, P1.sq_j
+        P2.r_ij_2 =  in_2 - mu_r_2[:, np.newaxis] - mu_c_2 + mu_ij_2
+
+        # RSS shares for each parties
+        P0.r_ij_1  = np.copy(P1.r_ij_1)
+
+        P1.mu_ij_2 = np.copy(P2.r_ij_2)
+
+        P2.mu_ij_0 = np.copy(P0.r_ij_0)
+
+        return P0.r_ij_0, P1.r_ij_1, P2.r_ij_2
+
+
+    def secSquaring(self, P0, P1, P2, r_ij_0, r_ij_1, r_ij_2):
+        """Secured multiplication based on RSS for doing squaring."""
+        # Square the residue for each party with given inputs
+        P0.r2_ij_0 =  (r_ij_0 * r_ij_0) + (r_ij_1 * r_ij_0) + (r_ij_0 * r_ij_1)
+
+        P1.r2_ij_1 =  (r_ij_1 * r_ij_1) + (r_ij_2 * r_ij_1) + (r_ij_1 * r_ij_2)
+
+        P2.r2_ij_2 =  (r_ij_2 * r_ij_2) + (r_ij_0 * r_ij_2) + (r_ij_2 * r_ij_0)
+
+        #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! RSS shares for each party - need randoms zero sharings
+
+
+        return P0.r2_ij_0, P1.r2_ij_1, P2.r2_ij_2
 
 
     def secMult_vector(self, share_00, share_01, share_10, share_11,t_size):
