@@ -146,7 +146,7 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
         # Calculate the scores by having inputs including secret shares of matrix, and length of rows, columns
         t_msr_0 = time.perf_counter()
 
-        msr_0, msr_1, row_msr_0, row_msr_1, col_msr_0, col_msr_1 = (self._calculate_scores_del(in_0, in_1, len_row, num_col_0,t_size))
+        msr_0, msr_1, row_msr_0, row_msr_1, col_msr_0, col_msr_1 = (self._scores_after_steps(in_0, in_1, len_row, num_col_0,t_size))
 
         t_msr_1 = time.perf_counter()
         t_shareMSR.append(t_msr_1 - t_msr_0)
@@ -222,7 +222,7 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
                 t_msr_0 = time.perf_counter()
 
                 msr_0, msr_1, row_msr_0, row_msr_1, col_msr_0, col_msr_1 = \
-                    (self._calculate_scores_del(in_0, in_1, len_row, num_col_0,t_size))
+                    (self._scores_after_steps(in_0, in_1, len_row, num_col_0,t_size))
 
                 t_msr_1 = time.perf_counter()
                 t_shareMSR.append(t_msr_1 - t_msr_0)
@@ -253,7 +253,7 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
         total_len_row = num_row_0
 
         # MSRs computation when NO nodes are removed (having exact rows/ columns length)
-        msr_0, msr_1, msr_2, row_msr_0, row_msr_1, row_msr_2, col_msr_0, col_msr_1, col_msr_2  = (
+        msr_0, row_msr_0, col_msr_0, msr_1, row_msr_1, col_msr_1, msr_2, row_msr_2, col_msr_2 = (
             self._scores_before_steps(P_0, P_1, P_2, in_0, in_1, in_2))
 
         # STOP function -- Check whether the MSR is below or equal to threshold
@@ -306,12 +306,8 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
                     pass
 
                 # Recalculate the scores (the columns by default have not been removed) to be used in stop function below
-                t_msr_0 = time.perf_counter()
-
-                msr_0, msr_1, row_msr_0, row_msr_1, col_msr_0, col_msr_1 =  (self._calculate_scores_del
-                                                                             (in_0, in_1,
-                                                                              total_len_row,
-                                                                              num_col_0))
+                msr_0, row_msr_0, col_msr_0, msr_1, row_msr_1, col_msr_1, msr_2, row_msr_2, col_msr_2 =  \
+                    (self._scores_after_steps(P_0, P_1, P_2, in_0, in_1, in_2, total_len_row, num_col_0))
 
                 # First stop function; check whether any nodes have been removed (equality of current, previous nodes)
                 stop_con1 = self._equality_check(in_0, in_1, cp_in_0, cp_in_1)
@@ -339,7 +335,7 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
         # Calculate score for whole matrix and that of columns
         t_msr_0 = time.perf_counter()
 
-        msr_0, msr_1, _, _, _, _ = (self._calculate_scores_del(bij_0, bij_1, total_len_row, len_col,t_size))
+        msr_0, msr_1, _, _, _, _ = (self._scores_after_steps(bij_0, bij_1, total_len_row, len_col,t_size))
         col_msr_0, col_msr_1     = (self._calculate_score_column(bij_0, bij_1, total_len_row, len_col,t_size))
 
         t_msr_1 = time.perf_counter()
@@ -388,7 +384,7 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
         # Calculate score for whole matrix and that of rows
         t_msr_0 = time.perf_counter()
 
-        msr_0, msr_1, _, _, _, _ =  (self._calculate_scores_del(bij_0, bij_1, total_len_row, len_col,t_size))
+        msr_0, msr_1, _, _, _, _ =  (self._scores_after_steps(bij_0, bij_1, total_len_row, len_col,t_size))
         row_msr_0, row_msr_1     =  (self._calculate_score_row(bij_0, bij_1, total_len_row, len_col,t_size))
 
         t_msr_1 = time.perf_counter()
@@ -468,48 +464,25 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
         return h_ij_0, h_r_0, h_c_0, h_ij_1, h_r_1, h_c_1, h_ij_2, h_r_2, h_c_2
 
 
-    def _calculate_scores_del(self, in_0, in_1, len_row, num_col_0,t_size):
-        """Calculate scores of the rows, of the columns and of the full data matrix after rows deletion"""
-        # ** Mean values calculation starts by knowing the length of columns but not rows
-        # Get the sum of whole data matrix
-        whole_sum_0 = np.sum(in_0)
-        whole_sum_1 = np.sum(in_1)
+    def _scores_after_steps(self, P0, P1, P2, in_0, in_1, in_2, len_row, len_col):
+        """Calculate scores of the rows, of the columns and of the full data matrix after node changes"""
+        # Mean values for whole data, rows and columns
+        mu_ij_0, mu_r_0, mu_c_0, mu_ij_1, mu_r_1, mu_c_1, mu_ij_2, mu_r_2, mu_c_2 = self.secSum(P0, P1, P2,
+                                                                                                 in_0, in_1, in_2,
+                                                                                                len_row, len_col)
 
-        # Mean of whole matrix by dividing the sum to length of matrix
-        data_mean_0 = (whole_sum_0 / (len_row * num_col_0)).astype(int)
-        data_mean_1 = (whole_sum_1 / (len_row * num_col_0)).astype(int)
+        # Residue for the input matrix
+        r_ij_0, r_ij_1, r_ij_2 = self.secResidue(P0, P1, P2, in_0, in_1, in_2, mu_ij_0, mu_r_0, mu_c_0,
+                                                          mu_ij_1, mu_r_1, mu_c_1, mu_ij_2, mu_r_2, mu_c_2)
 
-        # Mean of rows by knowing the length of columns
-        row_mean_0 = (np.sum(in_0, axis=1) / num_col_0).astype(int)
-        row_mean_1 = (np.sum(in_1, axis=1) / num_col_0).astype(int)
+        # Continue doing squaring by joint multiplication
+        r2_ij_0, r2_ij_1, r2_ij_2 = self.secSquaring(P0, P1, P2, r_ij_0, r_ij_1, r_ij_2)
 
-        # Mean of columns by dividing the sum to length of rows
-        col_mean_0 = (np.sum(in_0, axis=0) / (len_row)).astype(int)
-        col_mean_1 = (np.sum(in_1, axis=0) / (len_row)).astype(int)
+        # MSRs for whole data, rows and columns
+        h_ij_0, h_r_0, h_c_0, h_ij_1, h_r_1, h_c_1, h_ij_2, h_r_2, h_c_2 = self.secMean(P0, P1, P2,
+                                                                                        r2_ij_0, r2_ij_1, r2_ij_2)
 
-        # ** Residue calculation starts by having all mean values
-        residue_0 = in_0 - row_mean_0[:, np.newaxis] - col_mean_0 + data_mean_0
-        residue_1 = in_1 - row_mean_1[:, np.newaxis] - col_mean_1 + data_mean_1
-
-        # ** Continue doing squaring by power of 2 residue and joint multiplication
-        squared_residue_0 = np.copy(residue_0)
-        squared_residue_1 = np.copy(residue_1)
-
-        for idxr in range(residue_0.shape[0]):
-            squared_residue_0[idxr], squared_residue_1[idxr] = self.secSquare_vector(residue_0[idxr],
-                                                                                     residue_1[idxr],t_size)
-
-        # ** Another mean values calculation, this time for squared residues
-        msr_0 = (np.mean(squared_residue_0)).astype(int)
-        msr_1 = (np.mean(squared_residue_1)).astype(int)
-
-        row_msr_0 = (np.mean(squared_residue_0, axis=1)).astype(int)
-        row_msr_1 = (np.mean(squared_residue_1, axis=1)).astype(int)
-
-        col_msr_0 = (np.mean(squared_residue_0, axis=0)).astype(int)
-        col_msr_1 = (np.mean(squared_residue_1, axis=0)).astype(int)
-
-        return msr_0, msr_1, row_msr_0, row_msr_1, col_msr_0, col_msr_1
+        return h_ij_0, h_r_0, h_c_0, h_ij_1, h_r_1, h_c_1, h_ij_2, h_r_2, h_c_2
 
 
     def _calculate_score_column(self, in_0, in_1, len_row, len_col,t_size):
@@ -692,6 +665,37 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
         r_eq = (r_a + r_b) % (2 ** (eq.N * 8))
 
         return r_eq
+
+
+    def secSum(self, P0, P1, P2, in_0, in_1, in_2, len_row, len_col):
+        """Secured sum based on RSS consisting of local linear and non-linear functions."""
+        # Get sum values for whole matrix, row-wise and column-wise then divide it locally to size of matrix
+        P0.mu_ij_0 = (np.sum(in_0) / (len_row * len_col)).astype(int)
+        P0.mu_r_0  = (np.sum(in_0, axis=1) / len_col).astype(int)
+        P0.mu_c_0  = (np.sum(in_0, axis=0) / len_row).astype(int)
+
+        P1.mu_ij_1 = (np.sum(in_1) / (len_row * len_col)).astype(int)
+        P1.mu_r_1  = (np.sum(in_1, axis=1) / len_col).astype(int)
+        P1.mu_c_1  = (np.sum(in_1, axis=0) / len_row).astype(int)
+
+        P2.mu_ij_2 = (np.sum(in_2) / (len_row * len_col)).astype(int)
+        P2.mu_r_2  = (np.sum(in_2, axis=1) / len_col).astype(int)
+        P2.mu_c_2  = (np.sum(in_2, axis=0) / len_row).astype(int)
+
+        # RSS shares for each parties
+        P0.mu_ij_1 = np.copy(P1.mu_ij_1)
+        P0.mu_r_1  = np.copy(P1.mu_r_1)
+        P0.mu_c_1  = np.copy(P1.mu_c_1)
+
+        P1.mu_ij_2 = np.copy(P2.mu_ij_2)
+        P1.mu_r_2  = np.copy(P2.mu_r_2)
+        P1.mu_c_2  = np.copy(P2.mu_c_2)
+
+        P2.mu_ij_0 = np.copy(P0.mu_ij_0)
+        P2.mu_r_0  = np.copy(P0.mu_r_0)
+        P2.mu_c_0  = np.copy(P0.mu_c_0)
+
+        return P0.mu_ij_0, P0.mu_r_0, P0.mu_c_0, P1.mu_ij_1, P1.mu_r_1, P1.mu_c_1, P2.mu_ij_2, P2.mu_r_2, P2.mu_c_2
 
 
     def secMean(self, P0, P1, P2, in_0, in_1, in_2):
