@@ -822,10 +822,47 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
 
         P2.r2_ij_2 =  (r_ij_2 * r_ij_2) + (r_ij_0 * r_ij_2) + (r_ij_2 * r_ij_0)
 
-        #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! RSS shares for each party - need randoms zero sharings
+        # Find the structure of multiplicants
+        num_rows, num_cols = r_ij_0.shape
+
+        # Generate random shares
+        P0.share_0 = self.gen_RandSharing(num_rows, num_cols)
+
+        P1.share_1 = self.gen_RandSharing(num_rows, num_cols)
+
+        P2.share_2 = self.gen_RandSharing(num_rows, num_cols)
+
+        # Zero shares for each party
+        P0.c_0 = self.gen_ZeroSharing(P0.share_0, P1.share_1)
+
+        P1.c_1 = self.gen_ZeroSharing(P1.share_1, P2.share_2)
+
+        P2.c_2 = self.gen_ZeroSharing(P2.share_2, P0.share_0)
+
+        # RSS shares for each party
+        P0.r2_ij_1 = np.copy(P1.r_ij_1) + P0.c_0
+
+        P1.r2_ij_2 = np.copy(P2.r_ij_2) + P1.c_1
+
+        P2.r2_ij_0 = np.copy(P0.r_ij_0) + P2.c_2
 
 
         return P0.r2_ij_0, P1.r2_ij_1, P2.r2_ij_2
+
+
+    def gen_RandSharing(self, num_rows, num_cols):
+        # Generate secret sharing of zeros from an unsigned ring
+        rng     = np.random.default_rng(seed=42)
+        rshare = rng.integers(0, self.highest_range, size=(num_rows, num_cols), dtype="int64")
+
+        return rshare
+
+
+    def gen_ZeroSharing(self, current_share, next_share):
+
+        zero_share = current_share - next_share
+
+        return  zero_share
 
 
     def secMult_vector(self, share_00, share_01, share_10, share_11,t_size):
