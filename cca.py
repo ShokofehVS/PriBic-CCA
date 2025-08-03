@@ -851,7 +851,7 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
 
 
     def gen_RandSharing(self, num_rows, num_cols):
-        # Generate secret sharing of zeros from an unsigned ring
+        """Generation of random numbers from an unsigned ring."""
         rng     = np.random.default_rng(seed=42)
         rshare = rng.integers(0, self.highest_range, size=(num_rows, num_cols), dtype="int64")
 
@@ -859,7 +859,7 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
 
 
     def gen_ZeroSharing(self, current_share, next_share):
-
+        """Generation of zero shares from rng for RSS resharing."""
         zero_share = current_share - next_share
 
         return  zero_share
