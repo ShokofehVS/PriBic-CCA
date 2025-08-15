@@ -259,7 +259,9 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
         # STOP function -- Check whether the MSR is below or equal to threshold
         stop_itr_0 = msr_thr - msr_0
         stop_itr_1 = msr_thr - msr_1
-        stop       = self.fss_evaluation(stop_itr_0, stop_itr_1, 1)
+        stop_itr_2 = msr_thr - msr_2
+
+        stop       = self.fss_evaluation(P_0, P_1, P_2, stop_itr_0, stop_itr_1, stop_itr_2, 1)
 
         if stop:
             # No nodes have been removed so return length of rows without change
@@ -846,14 +848,13 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
 
         P2.r2_ij_0 = np.copy(P0.r_ij_0) + P2.c_2
 
-
         return P0.r2_ij_0, P1.r2_ij_1, P2.r2_ij_2
 
 
     def gen_RandSharing(self, num_rows, num_cols):
         """Generation of random numbers from an unsigned ring."""
         rng     = np.random.default_rng(seed=42)
-        rshare = rng.integers(0, self.highest_range, size=(num_rows, num_cols), dtype="int64")
+        rshare  = rng.integers(0, self.highest_range, size=(num_rows, num_cols), dtype="int64")
 
         return rshare
 
@@ -865,108 +866,83 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
         return  zero_share
 
 
-    def secMult_vector(self, share_00, share_01, share_10, share_11,t_size):
-        """Generation of Beaver Triples and secured multiplication for vectors."""
-        # Input parameters including vectors, threshold, and length of matrix
-        theta = 0
-        z_0 = share_00.astype(funshade.DTYPE)
-        z_1 = share_01.astype(funshade.DTYPE)
-
-        y_0 = share_10.astype(funshade.DTYPE)
-        y_1 = share_11.astype(funshade.DTYPE)
-
-        K = len(z_0)
-
-        # Create parties
-        class party:
-            def __init__(self, j: int):
-                self.j = j
-
-        P0 = party(0)
-        P1 = party(1)
-
-        # Generate beaver triples for vectors
-        a_hat_0, a_hat_1, b_hat_0, b_hat_1, c_hat_0, c_hat_1 = funshade.beaverTriple_ss(K, theta)
-
-        # Distribute randomness to (P0, P1)
-        P0.hat_a_j = a_hat_0;           P1.hat_a_j = a_hat_1
-        P0.hat_b_j = b_hat_0;           P1.hat_b_j = b_hat_1
-        P0.hat_c_j = c_hat_0;           P1.hat_c_j = c_hat_1
-
-        # Find d and e
-        P0.hat_d_j = funshade.share_ss(K, z_0, P0.hat_a_j)
-        P0.hat_e_j = funshade.share_ss(K, y_0, P0.hat_b_j)
-
-        P1.hat_d_j = funshade.share_ss(K, z_1, P1.hat_a_j)
-        P1.hat_e_j = funshade.share_ss(K, y_1, P1.hat_b_j)
-
-        with open('result_size.txt', 'w') as saveFile:
-            saveFile.write(str(P0.hat_d_j) + "\n")
-            saveFile.write(str(P0.hat_e_j) + "\n")
-            saveFile.write(str(P1.hat_d_j) + "\n")
-            saveFile.write(str(P1.hat_e_j) + "\n")
-        t_size.append(os.path.getsize("result_size.txt"))
-
-        # Reconstruct d and e in one round of communication
-        P0.hat_d = P0.hat_d_j + P1.hat_d_j
-        P1.hat_d = P0.hat_d_j + P1.hat_d_j
-
-        P0.hat_e = P0.hat_e_j + P1.hat_e_j
-        P1.hat_e = P0.hat_e_j + P1.hat_e_j
-
-        # Now multiply with additive secret sharing
-        P0.node2del_j = funshade.node2del(K, P0.j, P0.hat_d, P0.hat_e, P0.hat_a_j, P0.hat_b_j, P0.hat_c_j)
-        P1.node2del_j = funshade.node2del(K, P1.j, P1.hat_d, P1.hat_e, P1.hat_a_j, P1.hat_b_j, P1.hat_c_j)
-
-        return P0.node2del_j, P1.node2del_j
-
-
-    def fss_evaluation(self, share_0, share_1, len, t_size):
+    def fss_evaluation(self, P0, P1, P2, share_0, share_1, share_2, len):
         """FSS IC Sign Evaluation when having known length of input vector"""
         # Input parameters threshold, and length of matrix
         gamma = 0
-        z_0 = share_0.astype(funshade.DTYPE)
-        z_1 = share_1.astype(funshade.DTYPE)
-        K = len
+        z_0   = share_0.astype(funshade.DTYPE)
+        z_1   = share_1.astype(funshade.DTYPE)
+        z_2   = share_2.astype(funshade.DTYPE)
+        K     = len
 
-        # Create parties
-        class party:
-            def __init__(self, j: int):
-                self.j = j
+        # Generate three pairs setup preprocessing materials for three parties
+        r_in00, r_in01, k00, k01 = funshade.FssGenSign(K, gamma)
+        r_in10, r_in11, k10, k11 = funshade.FssGenSign(K, gamma)
+        r_in20, r_in21, k20, k21 = funshade.FssGenSign(K, gamma)
 
-        P0 = party(0)
-        P1 = party(1)
+        # (1) Layering RSS with FSS (extend FSS keys)
+        P0.k0_j = k00
+        P0.k1_j = k11
 
-        # Generate setup preprocessing materials
-        r_in0, r_in1, k0, k1 = funshade.FssGenSign(K, gamma)
+        P1.k0_j = k10
+        P1.k1_j = k21
 
-        P0.r_in_j = r_in0
-        P1.r_in_j = r_in1
-        P0.k_j = k0
-        P1.k_j = k1
+        P2.k0_j = k20
+        P2.k1_j = k01
+
+        # (2) Layering RSS with FSS (extend FSS masks)
+        P0.r0_in_j = r_in00
+        P0.r1_in_j = r_in11
+
+        P1.r0_in_j = r_in10
+        P1.r1_in_j = r_in21
+
+        P2.r0_in_j = r_in20
+        P2.r1_in_j = r_in01
 
         # Send the shares to the parties
         P0.z_j = z_0
         P1.z_j = z_1
+        P2.z_j = z_2
 
         # Mask the public input to FSS gate
-        P0.z_hat_j = P0.z_j + P0.r_in_j
-        P1.z_hat_j = P1.z_j + P1.r_in_j
+        P0.z0_hat_j    = P0.z_j + P0.r0_in_j
+        P0.z1_hat_j    = P0.z_j + P0.r1_in_j
 
-        P1.z_hat_nj = P0.z_hat_j
-        P0.z_hat_nj = P1.z_hat_j
+        P1.z0_hat_j    = P1.z_j + P1.r0_in_j
+        P1.z1_hat_j    = P1.z_j + P1.r1_in_j
 
-        with open('result_size.txt', 'w') as saveFile:
-            saveFile.write(str(P0.z_hat_j) + "\n")
-            saveFile.write(str(P1.z_hat_j) + "\n")
-        t_size.append(os.path.getsize("result_size.txt"))
+        P2.z0_hat_j    = P2.z_j + P2.r0_in_j
+        P2.z1_hat_j    = P2.z_j + P2.r1_in_j
+
+        # Open the blinded inputs
+        P0.z0_hat_nj = np.copy(P2.z1_hat_j)
+        P2.z1_hat_nj = np.copy(P0.z0_hat_j)
+
+        P0.z1_hat_nj = np.copy(P1.z0_hat_j)
+        P1.z0_hat_nj = np.copy(P0.z1_hat_j)
+
+        P1.z1_hat_nj = np.copy(P2.z0_hat_j)
+        P2.z0_hat_nj = np.copy(P1.z1_hat_j)
 
         # Evaluation with FSS IC gate
-        P1.o_j = funshade.eval_sign(K, P1.j, P1.k_j, P1.z_hat_j, P1.z_hat_nj)
-        P0.o_j = funshade.eval_sign(K, P0.j, P0.k_j, P0.z_hat_j, P0.z_hat_nj)
+        P0.o00_j = funshade.eval_sign(K, P0.d, P0.k0_j, P0.z0_hat_j, P0.z0_hat_nj)
+        P0.o01_j = funshade.eval_sign(K, P2.d, P2.k1_j, P2.z1_hat_j, P2.z1_hat_nj)
 
-        # Construct the output of both parties
-        o = P0.o_j + P1.o_j
+        P1.o10_j = funshade.eval_sign(K, P1.d, P1.k0_j, P1.z0_hat_j, P1.z0_hat_nj)
+        P1.o11_j = funshade.eval_sign(K, P0.d, P0.k1_j, P0.z1_hat_j, P0.z1_hat_nj)
+
+        P2.o20_j = funshade.eval_sign(K, P2.d, P2.k0_j, P2.z0_hat_j, P2.z0_hat_nj)
+        P2.o21_j = funshade.eval_sign(K, P1.d, P1.k1_j, P1.z1_hat_j, P1.z1_hat_nj)
+
+        # Construct the outputs of parties
+        o0 = P0.o00_j + P0.o01_j
+
+        o1 = P1.o10_j + P1.o11_j
+
+        o2 = P2.o20_j + P2.o21_j
+
+        o = o0 + o1 + o2
 
         return o
 
