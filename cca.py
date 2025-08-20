@@ -262,11 +262,11 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
         stop_itr_1 = 0 - msr_1
         stop_itr_2 = msr_thr - msr_2
 
-        stop0      = self.fss_evaluation(stop_itr_0, stop_itr_1, 1)
-        stop1      = self.fss_evaluation(stop_itr_1, stop_itr_2, 1)
-        stop2      = self.fss_evaluation(stop_itr_2, stop_itr_0, 1)
+        stop0      = self.fss_evaluation(stop_itr_0, stop_itr_1, 1, 0)
+        stop1      = self.fss_evaluation(stop_itr_1, stop_itr_2, 1, 0)
+        stop2      = self.fss_evaluation(stop_itr_2, stop_itr_0, 1, 0)
 
-        stop = (stop0 * stop1) + (stop1 * stop2) + (stop2 * stop0) % 2
+        stop = (stop0 * stop1) + (stop1 * stop2) + (stop2 * stop0)
 
         if stop:
             # No nodes have been removed so return length of rows without change
@@ -281,13 +281,15 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
                 r2remove_con_0 = self.multiple_node_deletion_threshold * msr_0 - row_msr_0
                 r2remove_con_1 = self.multiple_node_deletion_threshold * msr_1 - row_msr_1
                 r2remove_con_2 = self.multiple_node_deletion_threshold * msr_2 - row_msr_2
-                fss_rs_rows_00, fss_rs_rows_01, fss_rs_rows_10, fss_rs_rows_11, fss_rs_rows_20, fss_rs_rows_21  = (
-                    self.fss_evaluation(P_0, P_1, P_2, r2remove_con_0, r2remove_con_1, r2remove_con_2,
-                                        None, 0))
+
+                fss_rs_rows_00, fss_rs_rows_01 = self.fss_evaluation(r2remove_con_0, r2remove_con_1, None, 0)
+                fss_rs_rows_10, fss_rs_rows_11 = self.fss_evaluation(r2remove_con_1, r2remove_con_2, None, 0)
+                fss_rs_rows_20, fss_rs_rows_21 = self.fss_evaluation(r2remove_con_2, r2remove_con_0, None, 0)
 
                 # Remove the rows based on the result of evaluation 1 => remove row, 0 => nothing
                 # TRY TO DO MULTIPLICATION- P0: in_0 * (fss_rs_rows_00 + fss_rs_rows_01), ..  ?
-                """ nr2del0 = self._equality_check_2(fss_rs_rows_00, fss_rs_rows_01, 0, 0, num_row_0)
+                """ 
+                nr2del0 = self._equality_check_2(fss_rs_rows_00, fss_rs_rows_01, 0, 0, num_row_0)
                 nr2del1 = self._equality_check_2(fss_rs_rows_10, fss_rs_rows_11, 0, 0, num_row_0)
                 nr2del2 = self._equality_check_2(fss_rs_rows_20, fss_rs_rows_21, 0, 0, num_row_0)
 
@@ -305,13 +307,23 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
                     (self._scores_after_steps(P_0, P_1, P_2, in_0, in_1, in_2, total_len_row, num_col_0))
 
                 # First stop function; check whether any nodes have been removed (equality of current, previous nodes)
-                stop_con1 = self._equality_check(in_0, in_1, cp_in_0, cp_in_1)
+                # -----------------SHOULD REPLACE WITH CONSTANT ITERATION-----------------------
+                stop_oin0 = self._equality_check(in_0, in_1, cp_in_0, cp_in_1)
+                stop_oin1 = self._equality_check(in_1, in_2, cp_in_0, cp_in_1)
+                stop_oin2 = self._equality_check(in_2, in_0, cp_in_0, cp_in_1)
+
+                stop_con1 = (stop_oin0 * stop_oin1) + (stop_oin1 * stop_oin2) + (stop_oin2 * stop_oin0)
 
                 # Second stop function; check also the MSR is below/equal to threshold
-                stop_itr_0 = 0 - msr_0
-                stop_itr_1 = 0 - msr_1
-                stop_itr_2 = msr_thr - msr_1
-                stop_con2 = self.fss_evaluation(P_0, P_1, P_2, stop_itr_0, stop_itr_1, stop_itr_2, 1, 0)
+                stop_in_0 = 0 - msr_0
+                stop_in_1 = 0 - msr_1
+                stop_in_2 = msr_thr - msr_2
+
+                stop_rin0 = self.fss_evaluation(stop_in_0, stop_in_1, 1, 0)
+                stop_rin1 = self.fss_evaluation(stop_in_1, stop_in_2, 1, 0)
+                stop_rin2 = self.fss_evaluation(stop_in_2, stop_in_0, 1, 0)
+
+                stop_con2 = (stop_rin0 * stop_rin1) + (stop_rin1 * stop_rin2) + (stop_rin2 * stop_rin0)
 
                 # OR between the above-calculated stop functions
                 stop = stop_con1 or stop_con2
@@ -914,13 +926,18 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
 
         return  zero_share
 
-    def fss_evaluation(self, share_0, share_1, len):
-        """FSS IC Sign Evaluation when having known length of input vector"""
-        # Input parameters threshold, and length of matrix
+    def fss_evaluation(self, share_0, share_1, in_len, sdel):
+        """FSS IC Sign Evaluation"""
+        # Inputs and parameters e.g. threshold
         gamma = 0
         z_0 = share_0.astype(funshade.DTYPE)
         z_1 = share_1.astype(funshade.DTYPE)
-        K = len
+
+        # Check if the input length is None or not (it can be length of the input or one)
+        if in_len is None:
+            K = len(z_0)
+        else:
+            K = in_len
 
         # Create parties
         class party:
@@ -953,10 +970,13 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
         P1.o_j = funshade.eval_sign(K, P1.j, P1.k_j, P1.z_hat_j, P1.z_hat_nj)
         P0.o_j = funshade.eval_sign(K, P0.j, P0.k_j, P0.z_hat_j, P0.z_hat_nj)
 
+        # Outputs the results when in_len is not None or sdel is true
+        if in_len is None or sdel:
+            return P0.o_j, P1.o_j
         # Construct the output of both parties
-        o = P0.o_j + P1.o_j
-
-        return o
+        else:
+            o = P0.o_j + P1.o_j
+            return o
 
 
     def fss_evaluation_without_len(self, share_0, share_1):
