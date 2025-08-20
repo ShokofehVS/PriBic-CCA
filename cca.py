@@ -154,9 +154,10 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
         # STOP function -- Check whether the MSR is below or equal to threshold
         t_eval_0 = time.perf_counter()
 
-        stop_itr_0 = msr_thr - msr_0
-        stop_itr_1 = msr_thr - msr_1
-        stop = self.fss_evaluation(stop_itr_0, stop_itr_1, 1,t_size)
+        stop_itr_0 = 0 - msr_0
+        stop_itr_1 = 0 - msr_1
+        stop_itr_2 = msr_thr - msr_2
+        stop = self.fss_evaluation(P0, P1, P2, stop_itr_0, stop_itr_1, stop_itr_2, 1, 1)
 
         t_eval_1 = time.perf_counter()
         t_shareEval.append(t_eval_1 - t_eval_0)
@@ -261,51 +262,39 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
         stop_itr_1 = 0 - msr_1
         stop_itr_2 = msr_thr - msr_2
 
-        stop       = self.fss_evaluation(P_0, P_1, P_2, stop_itr_0, stop_itr_1, stop_itr_2, 1)
-        stop = 0
+        stop0      = self.fss_evaluation(stop_itr_0, stop_itr_1, 1)
+        stop1      = self.fss_evaluation(stop_itr_1, stop_itr_2, 1)
+        stop2      = self.fss_evaluation(stop_itr_2, stop_itr_0, 1)
+
+        stop = (stop0 * stop1) + (stop1 * stop2) + (stop2 * stop0) % 2
 
         if stop:
             # No nodes have been removed so return length of rows without change
-            return in_0, in_1, num_row_0
+            return in_0, in_1, in_2, num_row_0
 
         else:
             while not stop:
                 # Store previous values of matrices for equality check
-                cp_in_0 = np.copy(in_0);                 cp_in_1 = np.copy(in_1)
+                cp_in_0 = np.copy(in_0);    cp_in_1 = np.copy(in_1);    cp_in_2 = np.copy(in_2)
 
                 # FSS IC gate to check which rows should be removed
-                t_eval_0 = time.perf_counter()
-
                 r2remove_con_0 = self.multiple_node_deletion_threshold * msr_0 - row_msr_0
                 r2remove_con_1 = self.multiple_node_deletion_threshold * msr_1 - row_msr_1
                 r2remove_con_2 = self.multiple_node_deletion_threshold * msr_2 - row_msr_2
-                # fss_rs_rows_0, fss_rs_rows_1 = self.fss_evaluation_without_len(r2remove_con_0, r2remove_con_1)
-                fss_rs_rows_0, fss_rs_rows_1  = self.fss_evaluation(P_0, P_1, P_2, r2remove_con_0, r2remove_con_1,
-                                                                   r2remove_con_2, None)
+                fss_rs_rows_00, fss_rs_rows_01, fss_rs_rows_10, fss_rs_rows_11, fss_rs_rows_20, fss_rs_rows_21  = (
+                    self.fss_evaluation(P_0, P_1, P_2, r2remove_con_0, r2remove_con_1, r2remove_con_2,
+                                        None, 0))
 
                 # Remove the rows based on the result of evaluation 1 => remove row, 0 => nothing
-                nr2del = self._equality_check_2(fss_rs_rows_0, fss_rs_rows_1, 0, 0, num_row_0,t_size)
+                # TRY TO DO MULTIPLICATION- P0: in_0 * (fss_rs_rows_00 + fss_rs_rows_01), ..  ?
+                """ nr2del0 = self._equality_check_2(fss_rs_rows_00, fss_rs_rows_01, 0, 0, num_row_0)
+                nr2del1 = self._equality_check_2(fss_rs_rows_10, fss_rs_rows_11, 0, 0, num_row_0)
+                nr2del2 = self._equality_check_2(fss_rs_rows_20, fss_rs_rows_21, 0, 0, num_row_0)
 
                 # Because some rows might be zero now, let's ignore them in multiple node deletion
-                # First iteration; finds those non-zeros rows
-                # Second iteration; try to mask those rows that are not removed with zeros
-                r2del = []
-                for idxr in range(num_row_0):
-                    srdel = self._equality_check_2(in_0[idxr], in_1[idxr], 0, 0, num_col_0,t_size)
-                    if srdel.all() == 1:
-                        pass
-                    else:
-                        r2del.append(idxr)
-
-                itr_size = np.copy(total_len_row)
-                for idxr in range(itr_size):
-                    i = nr2del[idxr]
-                    if i == 1:
-                        r2del_ind       = r2del[idxr]
-                        in_0[r2del_ind] = 0;               in_1[r2del_ind] = 0
-                        total_len_row  -= 1
-                    else:
-                        pass
+                in_0, in_2, total_len_row  = self.maskRows(num_row_0, in_0, in_2, num_col_0, total_len_row, nr2del0)
+                in_0, in_1, total_len_row  = self.maskRows(num_row_0, in_0, in_1, num_col_0, total_len_row, nr2del1)
+                in_1, in_2, total_len_row  = self.maskRows(num_row_0, in_1, in_2, num_col_0, total_len_row, nr2del2)"""
 
                 # Check whether columns are above 100 then apply node deletion on them
                 if num_col_0 >= self.data_min_cols:
@@ -319,14 +308,15 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
                 stop_con1 = self._equality_check(in_0, in_1, cp_in_0, cp_in_1)
 
                 # Second stop function; check also the MSR is below/equal to threshold
-                stop_itr_0 = msr_thr - msr_0
-                stop_itr_1 = msr_thr - msr_1
-                stop_con2 = self.fss_evaluation(stop_itr_0, stop_itr_1, 1)
+                stop_itr_0 = 0 - msr_0
+                stop_itr_1 = 0 - msr_1
+                stop_itr_2 = msr_thr - msr_1
+                stop_con2 = self.fss_evaluation(P_0, P_1, P_2, stop_itr_0, stop_itr_1, stop_itr_2, 1, 0)
 
                 # OR between the above-calculated stop functions
                 stop = stop_con1 or stop_con2
 
-        return in_0, in_1, total_len_row
+        return in_0, in_1, in_2, total_len_row
 
 
     def _node_addition(self, bij_0, bij_1, in_0, in_1, total_len_row, len_col, t_shareMSR, t_shareEval, t_add,t_size):
@@ -539,7 +529,7 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
         return  h_r_0, h_r_1, h_r_2
 
 
-    def _equality_check(self, in_0, in_1, cp_in_0, cp_in_1,t_size):
+    def _equality_check(self, in_0, in_1, cp_in_0, cp_in_1):
         """Determine equality of matrix before and after node deletion; usage in stop function of multiple deletion"""
         # Determine the number of secret shared elements for keys
         n_row, n_cols = in_0.shape
@@ -574,11 +564,6 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
         # Now exchange the masked input to DPF FSS gate
         f_out = mdpf_in0 + mdpf_in1
 
-        with open('result_size.txt', 'w') as saveFile:
-            saveFile.write(str(mdpf_in0) + "\n")
-            saveFile.write(str(mdpf_in1) + "\n")
-        t_size.append(os.path.getsize("result_size.txt"))
-
         # Apply DPF for equality check
         r_a, r_b = (
             eq.eval(0, f_out, keys_a),
@@ -595,7 +580,48 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
         return stop
 
 
-    def _equality_check_2(self, in_0, in_1, cp_in_0, cp_in_1, n_element,t_size):
+    # def _equality_check_2(self, in_0, in_1, cp_in_0, cp_in_1, n_element,t_size):
+    #     """Determine equality of vectors; usage in deletion steps"""
+    #     # An instance of DPF gate for equality check with 6 threads
+    #     eq = sycret.EqFactory(n_threads=6)
+    #
+    #     # Generation of DPF keys
+    #     keys_a, keys_b = eq.keygen(n_element)
+    #
+    #     # Alpha based on generated keys
+    #     alpha = eq.alpha(keys_a, keys_b)
+    #
+    #     # Secret share the Alpha
+    #     rng = np.random.default_rng(seed=42)
+    #     e_rin_0 = rng.integers(1, self.highest_range, size=n_element, dtype="int64")
+    #     e_rin_1 = alpha - e_rin_0
+    #
+    #     # Input shares for DPF gate
+    #     dpf_in0 = in_0 - cp_in_0
+    #     dpf_in1 = in_1 - cp_in_1
+    #
+    #     # Add the mask to secret shares before reconstruction
+    #     mdpf_in0 = dpf_in0 + e_rin_0
+    #     mdpf_in1 = dpf_in1 + e_rin_1
+    #
+    #     # Now exchange the masked input to DPF FSS gate
+    #     f_out = mdpf_in0 + mdpf_in1
+    #
+    #     with open('result_size.txt', 'w') as saveFile:
+    #         saveFile.write(str(mdpf_in0) + "\n")
+    #         saveFile.write(str(mdpf_in1) + "\n")
+    #     t_size.append(os.path.getsize("result_size.txt"))
+    #
+    #     # Apply DPF for equality check
+    #     r_a, r_b = (
+    #         eq.eval(0, f_out, keys_a),
+    #         eq.eval(1, f_out, keys_b),
+    #     )
+    #     r_eq = (r_a + r_b) % (2 ** (eq.N * 8))
+    #
+    #     return r_eq
+    #
+    def _equality_check_2(self, in_0, in_1, cp_in_0, cp_in_1, n_element):
         """Determine equality of vectors; usage in deletion steps"""
         # An instance of DPF gate for equality check with 6 threads
         eq = sycret.EqFactory(n_threads=6)
@@ -622,11 +648,6 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
         # Now exchange the masked input to DPF FSS gate
         f_out = mdpf_in0 + mdpf_in1
 
-        with open('result_size.txt', 'w') as saveFile:
-            saveFile.write(str(mdpf_in0) + "\n")
-            saveFile.write(str(mdpf_in1) + "\n")
-        t_size.append(os.path.getsize("result_size.txt"))
-
         # Apply DPF for equality check
         r_a, r_b = (
             eq.eval(0, f_out, keys_a),
@@ -635,6 +656,30 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
         r_eq = (r_a + r_b) % (2 ** (eq.N * 8))
 
         return r_eq
+
+    def maskRows(self, num_row_0, in_0, in_1, num_col_0, total_len_row, nr2del):
+        # First iteration; finds those non-zeros rows
+        # Second iteration; try to mask those rows that are not removed with zeros
+        r2del = []
+        for idxr in range(num_row_0):
+            srdel = self._equality_check_2(in_0[idxr], in_1[idxr], 0, 0, num_col_0)
+            if srdel.all() == 1:
+                pass
+            else:
+                r2del.append(idxr)
+
+        itr_size = np.copy(total_len_row)
+        for idxr in range(itr_size):
+            i = nr2del[idxr]
+            if i == 1:
+                r2del_ind = r2del[idxr]
+                in_0[r2del_ind] = 0
+                in_1[r2del_ind] = 0
+                total_len_row -= 1
+            else:
+                pass
+
+        return in_0, in_1, total_len_row
 
 
     def secSum(self, P0, P1, P2, in_0, in_1, in_2, len_row, len_col):
@@ -869,342 +914,49 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
 
         return  zero_share
 
-
-    # def fss_evaluation(self, P0, P1, P2, share_0, share_1, share_2, len):
-    #     """FSS IC Sign Evaluation when having known length of input vector"""
-    #     # Input parameters threshold, and length of matrix
-    #     gamma = 0
-    #     z_0   = share_0.astype(funshade.DTYPE)
-    #     z_1   = share_1.astype(funshade.DTYPE)
-    #     z_2   = share_2.astype(funshade.DTYPE)
-    #     K     = len
-    #
-    #     # Generate three pairs setup preprocessing materials for three parties
-    #     r_in00, r_in01, k00, k01 = funshade.FssGenSign(K, gamma)
-    #     r_in10, r_in11, k10, k11 = funshade.FssGenSign(K, gamma)
-    #     r_in20, r_in21, k20, k21 = funshade.FssGenSign(K, gamma)
-    #
-    #     # (1) Layering RSS with FSS (extend FSS keys)
-    #     P0.k0_j = k00
-    #     P0.k1_j = k11
-    #
-    #     P1.k0_j = k10
-    #     P1.k1_j = k21
-    #
-    #     P2.k0_j = k20
-    #     P2.k1_j = k01
-    #
-    #     # (2) Layering RSS with FSS (extend FSS masks)
-    #     P0.r0_in_j = r_in00
-    #     P0.r1_in_j = r_in11
-    #
-    #     P1.r0_in_j = r_in10
-    #     P1.r1_in_j = r_in21
-    #
-    #     P2.r0_in_j = r_in20
-    #     P2.r1_in_j = r_in01
-    #
-    #     # Send the shares to the parties
-    #     P0.z_j = z_0
-    #     P1.z_j = z_1
-    #     P2.z_j = z_2
-    #
-    #     # Mask the public input to FSS gate
-    #     P0.z0_hat_j    = P0.z_j + P0.r0_in_j
-    #     P0.z1_hat_j    = P0.z_j + P0.r1_in_j
-    #
-    #     P1.z0_hat_j    = P1.z_j + P1.r0_in_j
-    #     P1.z1_hat_j    = P1.z_j + P1.r1_in_j
-    #
-    #     P2.z0_hat_j    = P2.z_j + P2.r0_in_j
-    #     P2.z1_hat_j    = P2.z_j + P2.r1_in_j
-    #
-    #     # Open the blinded inputs
-    #     P0.z0_hat_nj = np.copy(P2.z1_hat_j)
-    #     P2.z1_hat_nj = np.copy(P0.z0_hat_j)
-    #
-    #     P0.z1_hat_nj = np.copy(P1.z0_hat_j)
-    #     P1.z0_hat_nj = np.copy(P0.z1_hat_j)
-    #
-    #     P1.z1_hat_nj = np.copy(P2.z0_hat_j)
-    #     P2.z0_hat_nj = np.copy(P1.z1_hat_j)
-    #
-    #     # Evaluation with FSS IC gate
-    #     P0.o00_j = funshade.eval_sign(K, P0.d, P0.k0_j, P0.z0_hat_j, P0.z0_hat_nj)
-    #     P0.o01_j = funshade.eval_sign(K, P2.d, P2.k1_j, P2.z1_hat_j, P2.z1_hat_nj)
-    #
-    #     P1.o10_j = funshade.eval_sign(K, P1.d, P1.k0_j, P1.z0_hat_j, P1.z0_hat_nj)
-    #     P1.o11_j = funshade.eval_sign(K, P0.d, P0.k1_j, P0.z1_hat_j, P0.z1_hat_nj)
-    #
-    #     P2.o20_j = funshade.eval_sign(K, P2.d, P2.k0_j, P2.z0_hat_j, P2.z0_hat_nj)
-    #     P2.o21_j = funshade.eval_sign(K, P1.d, P1.k1_j, P1.z1_hat_j, P1.z1_hat_nj)
-    #
-    #     # Construct the outputs of parties
-    #     o0 = P0.o00_j + P0.o01_j
-    #
-    #     o1 = P1.o10_j + P1.o11_j
-    #
-    #     o2 = P2.o20_j + P2.o21_j
-    #
-    #     o = o0 + o1 + o2
-    #
-    #     return o
-
-    # def fss_evaluation(self, P0, P1, P2, share_0, share_1, share_2, len):
-    #     """FSS IC Sign Evaluation when having known length of input vector"""
-    #     # Input parameters threshold, and length of matrix
-    #     gamma = 0
-    #     z_0 = share_0.astype(funshade.DTYPE)
-    #     z_1 = share_1.astype(funshade.DTYPE)
-    #     z_2 = share_2.astype(funshade.DTYPE)
-    #     K = len
-    #
-    #     # Generate three pairs setup preprocessing materials for three parties
-    #     r_in00, r_in01, k00, k01 = funshade.FssGenSign(K, gamma)
-    #     r_in10, r_in11, k10, k11 = funshade.FssGenSign(K, gamma)
-    #     r_in20, r_in21, k20, k21 = funshade.FssGenSign(K, gamma)
-    #
-    #     # (1) Layering RSS with FSS (extend FSS keys)
-    #     P0.k0_j = k00
-    #     P0.k1_j = k10
-    #
-    #     P1.k1_j = k11
-    #     P1.k0_j = k20
-    #
-    #     P2.k1_j = k21
-    #     P2.k0_j = k01
-    #
-    #     # (2) Layering RSS with FSS (extend FSS masks)
-    #     P0.r0_in_j = r_in00
-    #     P0.r1_in_j = r_in10
-    #
-    #     P1.r1_in_j = r_in11
-    #     P1.r0_in_j = r_in20
-    #
-    #     P2.r1_in_j = r_in21
-    #     P2.r0_in_j = r_in01
-    #
-    #     # Send the shares to the parties
-    #     P0.z0_j = z_0
-    #     P1.z1_j = z_1
-    #     P2.z2_j = z_2
-    #
-    #     # RSS shares of input for each party
-    #     # P0.z1_j =  np.copy(P1.z1_j)
-    #     # P1.z2_j =  np.copy(P2.z2_j)
-    #     # P2.z0_j =  np.copy(P0.z0_j)
-    #
-    #     # # Mask the public input to FSS gate
-    #     P0.z0_hat_j = P0.z0_j + P0.r0_in_j
-    #     # P0.z1_hat_j = P0.z1_j + P0.r1_in_j
-    #
-    #     # P1.z0_hat_j = P1.z1_j + P1.r1_in_j
-    #     P1.z1_hat_j = P1.z1_j + P1.r1_in_j
-    #
-    #     # P2.z0_hat_j = P2.z2_j + P2.r1_in_j
-    #     P2.z2_hat_j = P2.z2_j + P2.r1_in_j
-    #     #
-    #     # # Open the blinded inputs
-    #     P0.z1_hat_nj = np.copy(P1.z1_hat_j)
-    #     # P2.z1_hat_nj = np.copy(P0.z0_hat_j)
-    #
-    #     # P0.z1_hat_nj = np.copy(P1.z0_hat_j)
-    #     P1.z2_hat_nj = np.copy(P2.z2_hat_j)
-    #
-    #     # P1.z1_hat_nj = np.copy(P2.z0_hat_j)
-    #     P2.z0_hat_nj = np.copy(P0.z0_hat_j)
-    #
-    #     # Evaluation with FSS IC gate
-    #     P0.o00_j = funshade.eval_sign(K, P0.d, P0.k0_j, P0.z0_hat_j, P0.z1_hat_nj)
-    #     P0.o10_j = funshade.eval_sign(K, P0.d, P0.k1_j, P0.z1_hat_nj, P0.z0_hat_j)
-    #
-    #     P1.o20_j = funshade.eval_sign(K, P1.d, P1.k0_j, P1.z2_hat_nj, P1.z1_hat_j)
-    #     P1.o11_j = funshade.eval_sign(K, P1.d, P1.k1_j, P1.z1_hat_j, P1.z2_hat_nj)
-    #
-    #     P2.o21_j = funshade.eval_sign(K, P2.d, P2.k0_j, P2.z0_hat_nj, P2.z2_hat_j)
-    #     P2.o01_j = funshade.eval_sign(K, P2.d, P2.k1_j, P2.z2_hat_j, P2.z0_hat_nj)
-    #
-    #     # Construct the outputs of parties
-    #     o0 = P0.o00_j + P2.o01_j
-    #
-    #     o1 = P1.o11_j + P0.o10_j
-    #
-    #     o2 = P1.o20_j + P2.o21_j
-    #
-    #     o = o0 + o1 + o2
-    #
-    #     return o
-
-    # def fss_evaluation(self, P0, P1, P2, share_0, share_1, share_2, len):
-    #     """FSS IC Sign Evaluation when having known length of input vector"""
-    #     # Input parameters threshold, and length of matrix
-    #     gamma = 0
-    #     z_0 = share_0.astype(funshade.DTYPE)
-    #     z_1 = share_1.astype(funshade.DTYPE)
-    #     z_2 = share_2.astype(funshade.DTYPE)
-    #     K = len
-    #
-    #     # Generate three pairs setup preprocessing materials for three parties
-    #     r_in00, r_in01, k00, k01 = funshade.FssGenSign(K, gamma)
-    #     r_in10, r_in11, k10, k11 = funshade.FssGenSign(K, gamma)
-    #     r_in20, r_in21, k20, k21 = funshade.FssGenSign(K, gamma)
-    #
-    #     # (1) Layering RSS with FSS (extend FSS keys)
-    #     P0.k0_j = k00
-    #     P0.k1_j = k11
-    #
-    #     P1.k1_j = k10
-    #     P1.k0_j = k21
-    #
-    #     P2.k1_j = k20
-    #     P2.k0_j = k01
-    #
-    #     # (2) Layering RSS with FSS (extend FSS masks)
-    #     P0.r0_in_j = r_in00
-    #     P0.r1_in_j = r_in11
-    #
-    #     P1.r1_in_j = r_in10
-    #     P1.r0_in_j = r_in21
-    #
-    #     P2.r1_in_j = r_in20
-    #     P2.r0_in_j = r_in01
-    #
-    #     # Send the shares to the parties
-    #     P0.z0_j = z_0
-    #     P1.z1_j = z_1
-    #     P2.z2_j = z_2
-    #
-    #     # RSS shares of input for each party
-    #     # P0.z1_j =  np.copy(P1.z1_j)
-    #     # P1.z2_j =  np.copy(P2.z2_j)
-    #     # P2.z0_j =  np.copy(P0.z0_j)
-    #
-    #     # # Mask the public input to FSS gate
-    #     P0.z0_hat_j = P0.z0_j + P0.r0_in_j
-    #     # P0.z1_hat_j = P0.z1_j + P0.r1_in_j
-    #
-    #     # P1.z0_hat_j = P1.z1_j + P1.r1_in_j
-    #     P1.z1_hat_j = P1.z1_j + P1.r1_in_j
-    #
-    #     # P2.z0_hat_j = P2.z2_j + P2.r1_in_j
-    #     P2.z2_hat_j = P2.z2_j + P2.r1_in_j
-    #     #
-    #     # # Open the blinded inputs
-    #     P0.z1_hat_nj = np.copy(P1.z1_hat_j)
-    #     # P2.z1_hat_nj = np.copy(P0.z0_hat_j)
-    #
-    #     # P0.z1_hat_nj = np.copy(P1.z0_hat_j)
-    #     P1.z2_hat_nj = np.copy(P2.z2_hat_j)
-    #
-    #     # P1.z1_hat_nj = np.copy(P2.z0_hat_j)
-    #     P2.z0_hat_nj = np.copy(P0.z0_hat_j)
-    #
-    #     # Evaluation with FSS IC gate
-    #     P0.o00_j = funshade.eval_sign(K, P0.d, P0.k0_j, P0.z0_hat_j, P0.z1_hat_nj)
-    #     P0.o01_j = funshade.eval_sign(K, P2.d, P2.k0_j, P2.z0_hat_nj, P0.z0_hat_j)
-    #
-    #     P0.o11_j = funshade.eval_sign(K, P0.d, P0.k0_j, P0.z2_hat_nj, P0.z1_hat_j)
-    #     P1.o10_j = funshade.eval_sign(K, P1.d, P1.k1_j, P1.z1_hat_j, P1.z2_hat_nj)
-    #
-    #     P1.o21_j = funshade.eval_sign(K, P1.d, P1.k0_j, P1.z0_hat_nj, P1.z2_hat_j)
-    #     P2.o20_j = funshade.eval_sign(K, P2.d, P2.k1_j, P2.z2_hat_j, P2.z0_hat_nj)
-    #
-    #     # Construct the outputs of parties
-    #     o0 = P0.o00_j + P2.o01_j
-    #
-    #     o1 = P1.o11_j + P0.o10_j
-    #
-    #     o2 = P1.o20_j + P2.o21_j
-    #
-    #     o = o0 + o1 + o2
-    #
-    #     return o
-
-    def fss_evaluation(self, P0, P1, P2, share_0, share_1, share_2, in_len):
+    def fss_evaluation(self, share_0, share_1, len):
         """FSS IC Sign Evaluation when having known length of input vector"""
         # Input parameters threshold, and length of matrix
         gamma = 0
-        z_0   = share_0.astype(funshade.DTYPE)
-        z_1   = share_1.astype(funshade.DTYPE)
-        z_2   = share_2.astype(funshade.DTYPE)
+        z_0 = share_0.astype(funshade.DTYPE)
+        z_1 = share_1.astype(funshade.DTYPE)
+        K = len
 
-        # Check if the input length is None or not (it can be length of the input or one)
-        if in_len is None:
-            K = len(z_0)
-        else:
-            K = in_len
+        # Create parties
+        class party:
+            def __init__(self, j: int):
+                self.j = j
 
-        # Generate three pairs setup preprocessing materials for three parties
-        r_in20, r_in21, k20, k21 = funshade.FssGenSign(K, gamma)
-        r_in00, r_in01, k00, k01 = funshade.FssGenSign(K, gamma)
-        r_in10, r_in11, k10, k11 = funshade.FssGenSign(K, gamma)
+        P0 = party(0)
+        P1 = party(1)
 
-        # (1) Layering RSS with FSS (extend FSS keys)
-        P0.k0_j = k00
-        P0.k1_j = k11
+        # Generate setup preprocessing materials
+        r_in0, r_in1, k0, k1 = funshade.FssGenSign(K, gamma)
 
-        P1.k0_j = k10
-        P1.k1_j = k21
-
-        P2.k0_j = k20
-        P2.k1_j = k01
-
-        # (2) Layering RSS with FSS (extend FSS masks)
-        P0.r0_in_j = r_in00
-        P0.r1_in_j = r_in11
-
-        P1.r0_in_j = r_in10
-        P1.r1_in_j = r_in21
-
-        P2.r0_in_j = r_in20
-        P2.r1_in_j = r_in01
+        P0.r_in_j = r_in0
+        P1.r_in_j = r_in1
+        P0.k_j = k0
+        P1.k_j = k1
 
         # Send the shares to the parties
         P0.z_j = z_0
         P1.z_j = z_1
-        P2.z_j = z_2
 
         # Mask the public input to FSS gate
-        P0.z0_hat_j    = P0.z_j + P0.r0_in_j
-        P0.z1_hat_j    = P0.z_j + P0.r1_in_j
+        P0.z_hat_j = P0.z_j + P0.r_in_j
+        P1.z_hat_j = P1.z_j + P1.r_in_j
 
-        P1.z0_hat_j    = P1.z_j + P1.r0_in_j
-        P1.z1_hat_j    = P1.z_j + P1.r1_in_j
-
-        P2.z0_hat_j    = P2.z_j + P2.r0_in_j
-        P2.z1_hat_j    = P2.z_j + P2.r1_in_j
-
-        # Open the blinded inputs
-        P0.z0_hat_nj = np.copy(P2.z1_hat_j)
-        P2.z1_hat_nj = np.copy(P0.z0_hat_j)
-
-        P0.z1_hat_nj = np.copy(P1.z0_hat_j)
-        P1.z0_hat_nj = np.copy(P0.z1_hat_j)
-
-        P1.z1_hat_nj = np.copy(P2.z0_hat_j)
-        P2.z0_hat_nj = np.copy(P1.z1_hat_j)
+        P1.z_hat_nj = P0.z_hat_j
+        P0.z_hat_nj = P1.z_hat_j
 
         # Evaluation with FSS IC gate
-        P2.o20_j = funshade.eval_sign(K, P2.d, P2.k0_j, P2.z0_hat_j, P2.z0_hat_nj)
-        P1.o21_j = funshade.eval_sign(K, P1.d, P1.k1_j, P1.z1_hat_j, P1.z1_hat_nj)
+        P1.o_j = funshade.eval_sign(K, P1.j, P1.k_j, P1.z_hat_j, P1.z_hat_nj)
+        P0.o_j = funshade.eval_sign(K, P0.j, P0.k_j, P0.z_hat_j, P0.z_hat_nj)
 
-        P0.o00_j = funshade.eval_sign(K, P0.d, P0.k0_j, P0.z0_hat_j, P0.z0_hat_nj)
-        P2.o01_j = funshade.eval_sign(K, P2.d, P2.k1_j, P2.z1_hat_j, P2.z1_hat_nj)
+        # Construct the output of both parties
+        o = P0.o_j + P1.o_j
 
-        P1.o10_j = funshade.eval_sign(K, P1.d, P1.k0_j, P1.z0_hat_j, P1.z0_hat_nj)
-        P0.o11_j = funshade.eval_sign(K, P0.d, P0.k1_j, P0.z1_hat_j, P0.z1_hat_nj)
-
-
-        # Construct the outputs of parties when in_len is not None
-        if in_len is None:
-            return P0.o00_j, P0.o11_j, P1.o10_j, P1.o21_j, P2.o20_j, P2.o01_j
-        else:
-            o0 = P0.o00_j + P2.o01_j
-            o1 = P1.o10_j + P0.o11_j
-            o2 = P2.o20_j + P1.o21_j
-            o  = o0 + o1 + o2
-
-            return o
+        return o
 
 
     def fss_evaluation_without_len(self, share_0, share_1):
