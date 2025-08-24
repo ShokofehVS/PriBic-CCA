@@ -101,11 +101,14 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
             num_row_2, num_col_2 = in_2.shape
 
             # Steps including single, multiple deletion/ addition
-            P_0.bij_0, P_1.bij_1, P_1.bij_2, len_row  = self._multiple_node_deletion(P_0, P_1, P_2, in_0, in_1, in_2,
-                                                                                     self.msr_threshold)
+            # P_0.bij_0, P_1.bij_1, P_2.bij_2, len_row  = self._multiple_node_deletion(P_0, P_1, P_2, in_0, in_1, in_2,
+            #                                                                          self.msr_threshold)
 
             # P_0.cij_0, P_1.cij_1, len_row, len_col  = (
-            #     self._single_node_deletion(P_0.bij_0, P_1.bij_1, len_row, self.msr_threshold,t_shareMSR, t_shareEval, t_sdel, t_size))
+            #     self._single_node_deletion(P_0, P_1, P_2, P_0.bij_0, P_1.bij_1, P_2.bij_2, len_row, self.msr_threshold))
+
+            P_0.cij_0, P_1.cij_1, len_row, len_col = (
+                self._single_node_deletion(P_0, P_1, P_2, in_0, in_1, in_2, num_row_0, self.msr_threshold))
             #
             # P_0.dij_0, P_1.dij_1, len_row, len_col = (
             #     self._node_addition(P_0.cij_0, P_1.cij_1, in_0, in_1, len_row, len_col, t_shareMSR, t_shareEval, t_add,t_size))
@@ -142,6 +145,8 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
         num_row_1, num_col_1 = in_1.shape
         num_row_2, num_col_2 = in_2.shape
 
+        len_col = num_col_0
+
         # Calculate the scores by having inputs including secret shares of matrix, and length of rows, columns
         msr_0, row_msr_0, col_msr_0, msr_1, row_msr_1, col_msr_1, msr_2, row_msr_2, col_msr_2 = \
             (self._scores_after_steps(P_0, P_1, P_2, in_0, in_1, in_2, len_row, num_col_0))
@@ -155,7 +160,7 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
         stop1 = self.fss_evaluation(stop_itr_1, stop_itr_2, 1, 0)
         stop2 = self.fss_evaluation(stop_itr_2, stop_itr_0, 1, 0)
 
-        stop = (stop0 * stop1) + (stop1 * stop2) + (stop2 * stop0)
+        stop  = (stop0 & stop1) | (stop1 & stop2) | (stop2 & stop0)
 
         if stop:
             # No node has been removed
@@ -167,64 +172,69 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
                 row_max_msr0 = self._amx(row_msr_0, row_msr_1)
                 row_max_msr1 = self._amx(row_msr_1, row_msr_2)
                 row_max_msr2 = self._amx(row_msr_2, row_msr_0)
+                row_max = row_max_msr0 if (row_max_msr0 == row_max_msr1 or row_max_msr0 == row_max_msr2) else row_max_msr1
 
                 col_max_msr0 = self._amx(col_msr_0, col_msr_1)
                 col_max_msr1 = self._amx(col_msr_1, col_msr_2)
                 col_max_msr2 = self._amx(col_msr_2, col_msr_0)
+                col_max = col_max_msr0 if (col_max_msr0 == col_max_msr1 or col_max_msr0 == col_max_msr2) else col_max_msr1
 
-                # Check score of row/ column with maximum values to remove that particular node
-                eval_node_0 = row_msr_0[row_max_msr] - col_msr_0[col_max_msr]
-                eval_node_1 = row_msr_1[row_max_msr] - col_msr_1[col_max_msr]
-                eval_node_2 = row_msr_2[row_max_msr] - col_msr_2[col_max_msr]
+                # Check score of row/ column with maximum values to remove that particular node (focus on *columns*)
+                eval_col_0 = row_msr_0[row_max] - col_msr_0[col_max]
+                eval_col_1 = row_msr_1[row_max] - col_msr_1[col_max]
+                eval_col_2 = row_msr_2[row_max] - col_msr_2[col_max]
 
-                sdel0, sdel1 = self.fss_evaluation_sdel(eval_node_0, eval_node_1, 1)
+                sdel_00, sdel_01 = self.fss_evaluation(eval_col_0, eval_col_1, 1, 1)
+                sdel_10, sdel_11 = self.fss_evaluation(eval_col_1, eval_col_2, 1, 1)
+                sdel_20, sdel_21 = self.fss_evaluation(eval_col_2, eval_col_0, 1, 1)
 
-                # Check whether row_msr[row_max_msr] >= col_msr[col_max_msr] or not
-                cond = self._equality_check_2(sdel0, sdel1, 0, 0, 1)
+                sdel_0   = sdel_00 + sdel_01;        sdel_1 = sdel_10 + sdel_11;             sdel_2 = sdel_20 + sdel_21
+                fss_cols = ((sdel_0 & sdel_1) | (sdel_1 & sdel_2) | (sdel_2 & sdel_0))
 
-                # Remove the row/ column based on the result of evaluation 0 => remove row, 1 => remove column
-                r2del, c2del = [], []
-                if cond == 0:
-                    # Because some rows might be zero now, let's ignore them in single node deletion
-                    for idxr in range(num_row_0):
-                        srdel = self._equality_check_2(in_0[idxr], in_1[idxr], 0, 0, num_col_0)
-                        if srdel.all() == 1:
-                            pass
-                        else:
-                            r2del.append(idxr)
-                    r2del_ind       = r2del[row_max_msr]
-                    in_0[r2del_ind] = 0;                                in_1[r2del_ind] = 0
-                    len_row        -= 1
+                # Remove single column based on the eval_col result
+                # So that transpose secret shared input matrices before removing column by multiplying fss_cols with them
+                transposed_in_0 = in_0.T;          transposed_in_1 = in_1.T;               transposed_in_2 = in_2.T
+                transposed_in_0[col_max_msr0] *= fss_cols
+                transposed_in_1[col_max_msr1] *= fss_cols
+                transposed_in_1[col_max_msr2] *= fss_cols
 
-                else:
-                    # Transpose secret shared input matrices before removing column
-                    transposed_in_0 = in_0.T
-                    transposed_in_1 = in_1.T
+                # Update the length of the columns
+                len_col = len_col + (fss_cols - 1)
 
-                    # Because some columns might be zero now, let's ignore them in single node deletion
-                    for idxc in range(num_col_0):
-                        scdel =  self._equality_check_2(transposed_in_0[idxc], transposed_in_1[idxc],
-                                                        0, 0, num_row_0)
-                        if scdel.all() == 1:
-                            pass
-                        else:
-                            c2del.append(idxc)
-                    c2del_ind = c2del[col_max_msr]
-                    transposed_in_0[c2del_ind] = 0;                       transposed_in_1[c2del_ind] = 0
+                # Return the transposed matrices to normal
+                in_0 = transposed_in_0.T;          in_1 = transposed_in_1.T;             in_2 = transposed_in_2.T
 
-                    # Return the transposed matrices to normal
-                    in_0 = transposed_in_0.T
-                    in_1 = transposed_in_1.T
-                    num_col_0    -= 1;                                    num_col_1    -= 1
+                # Check score of row/ column with maximum values to remove that particular node (focus on *rows*)
+                eval_row_0 = col_msr_0[col_max] - row_msr_0[row_max]
+                eval_row_1 = col_msr_1[col_max] - row_msr_1[row_max]
+                eval_row_2 = col_msr_2[col_max] - row_msr_2[row_max]
+
+                rdel_00, rdel_01 = self.fss_evaluation(eval_row_0, eval_row_1, 1, 1)
+                rdel_10, rdel_11 = self.fss_evaluation(eval_row_1, eval_row_2, 1, 1)
+                rdel_20, rdel_21 = self.fss_evaluation(eval_row_2, eval_row_0, 1, 1)
+
+                rdel_0   = rdel_00 + rdel_01;         rdel_1 = rdel_10 + rdel_11;            rdel_2 = rdel_20 + rdel_21
+                fss_rows = ((rdel_0 & rdel_1) | (rdel_1 & rdel_2) | (rdel_2 & rdel_0))
+
+                # Remove single row based on the eval_row result by multiplying fss_rows with input shares
+                in_0[row_max_msr0] *= fss_rows;     in_1[row_max_msr1] *= fss_rows;       in_2[row_max_msr2] *= fss_rows
+
+                # Update the length of the rows
+                len_row  = len_row + (fss_rows - 1)
 
                 # Recalculate the scores by having inputs including secret shares of matrix, and length of rows, columns
                 msr_0, row_msr_0, col_msr_0, msr_1, row_msr_1, col_msr_1, msr_2, row_msr_2, col_msr_2 = \
                     (self._scores_after_steps(P_0, P_1, P_2, in_0, in_1, in_2, len_row, num_col_0))
 
                 # Recheck the stop function
-                stop_itr_0 = msr_thr - msr_0
-                stop_itr_1 = msr_thr - msr_1
-                stop = self.fss_evaluation(stop_itr_0, stop_itr_1, 1)
+                stop_itr_0 = 0 - msr_0
+                stop_itr_1 = 0 - msr_1
+                stop_itr_2 = msr_thr - msr_2
+                stop0 = self.fss_evaluation(stop_itr_0, stop_itr_1, 1, 0)
+                stop1 = self.fss_evaluation(stop_itr_1, stop_itr_2, 1, 0)
+                stop2 = self.fss_evaluation(stop_itr_2, stop_itr_0, 1, 0)
+
+                stop = (stop0 & stop1) | (stop1 & stop2) | (stop2 & stop0)
 
 
         return in_0, in_1, len_row, num_col_0
@@ -254,7 +264,8 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
 
         stop       = (stop0 & stop1) | (stop1 & stop2) | (stop2 & stop0)
         no_itr     = 0
-        stop_initr = np.log(num_row_0)+np.log(num_col_0)
+        # stop_initr = np.log(num_row_0)+np.log(num_col_0)
+        stop_initr = 1
 
         if stop:
             # No nodes have been removed so return length of rows without change
@@ -296,6 +307,8 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
                 # Recalculate the scores (the columns by default have not been removed) to be used in stop function below
                 msr_0, row_msr_0, col_msr_0, msr_1, row_msr_1, col_msr_1, msr_2, row_msr_2, col_msr_2 =  \
                     (self._scores_after_steps(P_0, P_1, P_2, in_0, in_1, in_2, total_len_row, num_col_0))
+
+        #         BRING BACK THE CONDITIONS
 
         return in_0, in_1, in_2, total_len_row
 
