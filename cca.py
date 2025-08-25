@@ -220,7 +220,7 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
                 stop2 = self.fss_evaluation(stop_itr_2, stop_itr_0, 1, 0)
 
                 stop = (stop0 & stop1) | (stop1 & stop2) | (stop2 & stop0)
-                print("finished single deletion")
+
 
         return in_0, in_1, in_2, len_row, len_col
 
@@ -296,7 +296,6 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
                 stop2      = self.fss_evaluation(stop_itr_2, stop_itr_0, 1, 0)
 
                 stop       = (stop0 & stop1) | (stop1 & stop2) | (stop2 & stop0)
-                print("finished multiple deletion")
 
 
         return in_0, in_1, in_2, total_len_row
