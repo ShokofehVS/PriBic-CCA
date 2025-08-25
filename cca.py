@@ -220,8 +220,7 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
                 stop2 = self.fss_evaluation(stop_itr_2, stop_itr_0, 1, 0)
 
                 stop = (stop0 & stop1) | (stop1 & stop2) | (stop2 & stop0)
-        #         STOP FUNCTIONS NOT ALIGNED WITH OUR ASSUMPTIONS TO GET FINAL RESULT
-
+                print("finished single deletion")
 
         return in_0, in_1, in_2, len_row, len_col
 
@@ -249,19 +248,13 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
         stop2      = self.fss_evaluation(stop_itr_2, stop_itr_0, 1, 0)
 
         stop       = (stop0 & stop1) | (stop1 & stop2) | (stop2 & stop0)
-        no_itr     = 0
-        # stop_initr = np.log(num_row_0)+np.log(num_col_0)
-        stop_initr = 1
 
         if stop:
             # No nodes have been removed so return length of rows without change
             return in_0, in_1, in_2, num_row_0
 
         else:
-            while no_itr < stop_initr:
-                # Store previous values of matrices for equality check
-                cp_in_0 = np.copy(in_0);    cp_in_1 = np.copy(in_1);    cp_in_2 = np.copy(in_2)
-
+            while not stop:
                 # FSS IC gate to check which rows should be removed
                 r2remove_con_0 = self.multiple_node_deletion_threshold * msr_0 - row_msr_0
                 r2remove_con_1 = self.multiple_node_deletion_threshold * msr_1 - row_msr_1
@@ -293,7 +286,18 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
                 msr_0, row_msr_0, col_msr_0, msr_1, row_msr_1, col_msr_1, msr_2, row_msr_2, col_msr_2 =  \
                     (self._scores_after_steps(P_0, P_1, P_2, in_0, in_1, in_2, total_len_row, num_col_0))
 
-        #         BRING BACK THE CONDITIONS
+                # STOP function -- Check whether the MSR is below or equal to threshold
+                stop_itr_0 = 0 - msr_0
+                stop_itr_1 = 0 - msr_1
+                stop_itr_2 = msr_thr - msr_2
+
+                stop0      = self.fss_evaluation(stop_itr_0, stop_itr_1, 1, 0)
+                stop1      = self.fss_evaluation(stop_itr_1, stop_itr_2, 1, 0)
+                stop2      = self.fss_evaluation(stop_itr_2, stop_itr_0, 1, 0)
+
+                stop       = (stop0 & stop1) | (stop1 & stop2) | (stop2 & stop0)
+                print("finished multiple deletion")
+
 
         return in_0, in_1, in_2, total_len_row
 
