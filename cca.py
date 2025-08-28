@@ -2,7 +2,7 @@
     PriBic-CCA: A Python library of privacy-preserving biclustering algorithm (Cheng and Church) with Function Secret
     Sharing in malicious adversary setting
 
-    Copyright (C) 2024  Shokofeh VahidianSadegh
+    Copyright (C) 2025  Shokofeh VahidianSadegh
 
     This file is part of PriBic-CCA.
 
@@ -137,6 +137,7 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
             (self._scores_after_steps(P_0, P_1, P_2, in_0, in_1, in_2, len_row, len_col))
 
         # STOP function -- Check whether the MSR is below or equal to threshold
+        # (Abort function is described in squaring method)
         stop_itr_0 = 0 - msr_0
         stop_itr_1 = 0 - msr_1
         stop_itr_2 = msr_thr - msr_2
@@ -165,6 +166,7 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
                 col_max = col_max_msr0 if (col_max_msr0 == col_max_msr1 or col_max_msr0 == col_max_msr2) else col_max_msr1
 
                 # Check score of row/ column with maximum values to remove that particular node (focus on *columns*)
+                # (Abort function is described in squaring method)
                 eval_col_0 = row_msr_0[row_max] - col_msr_0[col_max]
                 eval_col_1 = row_msr_1[row_max] - col_msr_1[col_max]
                 eval_col_2 = row_msr_2[row_max] - col_msr_2[col_max]
@@ -190,6 +192,7 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
                 in_0 = transposed_in_0.T;          in_1 = transposed_in_1.T;             in_2 = transposed_in_2.T
 
                 # Check score of row/ column with maximum values to remove that particular node (focus on *rows*)
+                # (Abort function is described in squaring method)
                 eval_row_0 = col_msr_0[col_max] - row_msr_0[row_max]
                 eval_row_1 = col_msr_1[col_max] - row_msr_1[row_max]
                 eval_row_2 = col_msr_2[col_max] - row_msr_2[row_max]
@@ -212,6 +215,7 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
                     (self._scores_after_steps(P_0, P_1, P_2, in_0, in_1, in_2, len_row, len_col))
 
                 # Recheck the stop function
+                # (Abort function is described in squaring method)
                 stop_itr_0 = 0 - msr_0
                 stop_itr_1 = 0 - msr_1
                 stop_itr_2 = msr_thr - msr_2
@@ -239,6 +243,7 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
             self._scores_before_steps(P_0, P_1, P_2, in_0, in_1, in_2))
 
         # STOP function -- Check whether the MSR is below or equal to threshold
+        # (Abort function is described in squaring method)
         stop_itr_0 = 0 - msr_0
         stop_itr_1 = 0 - msr_1
         stop_itr_2 = msr_thr - msr_2
@@ -256,6 +261,7 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
         else:
             while not stop:
                 # FSS IC gate to check which rows should be removed
+                # (Abort function is described in squaring method)
                 r2remove_con_0 = self.multiple_node_deletion_threshold * msr_0 - row_msr_0
                 r2remove_con_1 = self.multiple_node_deletion_threshold * msr_1 - row_msr_1
                 r2remove_con_2 = self.multiple_node_deletion_threshold * msr_2 - row_msr_2
@@ -287,6 +293,7 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
                     (self._scores_after_steps(P_0, P_1, P_2, in_0, in_1, in_2, total_len_row, num_col_0))
 
                 # STOP function -- Check whether the MSR is below or equal to threshold
+                # (Abort function is described in squaring method)
                 stop_itr_0 = 0 - msr_0
                 stop_itr_1 = 0 - msr_1
                 stop_itr_2 = msr_thr - msr_2
@@ -318,6 +325,7 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
                                                                        total_len_row, len_col)
 
         # FSS IC gate to check which columns should be added
+        # (Abort function is described in squaring method)
         c2add_con_0 = msr_0 - col_msr_0
         c2add_con_1 = msr_1 - col_msr_1
         c2add_con_2 = msr_2 - col_msr_2
@@ -357,6 +365,7 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
                                                                            total_len_row, len_col)
 
         # FSS IC gate to check which rows should be added
+        # (Abort function is described in squaring method)
         r2add_con_0 = msr_0 - row_msr_0
         r2add_con_1 = msr_1 - row_msr_1
         r2add_con_2 = msr_2 - row_msr_2
@@ -401,7 +410,7 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
                     pass
             node_max_0, node_max_1 = self.fss_evaluation(np.array(argmx_con_0), np.array(argmx_con_1),None, 0)
             s_j_0 = np.sum(node_max_0);                                 s_j_1 = np.sum(node_max_1)
-            delta_j.append(self._equality_check_2(s_j_0, s_j_1, m-1, 0, 1))
+            delta_j.append(self._equality_check(s_j_0, s_j_1, m-1, 0, 1))
             argmx_con_0, argmx_con_1 = [], []
             if delta_j[j] == 1:
                 arg_max_res = j
@@ -497,7 +506,7 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
         return  h_r_0, h_r_1, h_r_2
 
 
-    def _equality_check_2(self, in_0, in_1, cp_in_0, cp_in_1, n_element):
+    def _equality_check(self, in_0, in_1, cp_in_0, cp_in_1, n_element):
         """Determine equality of vectors; usage in deletion steps"""
         # An instance of DPF gate for equality check with 6 threads
         eq = sycret.EqFactory(n_threads=6)
@@ -743,11 +752,13 @@ class ChengChurchAlgorithm(BaseBiclusteringAlgorithm):
         P2.c_2 = self.gen_ZeroSharing(P2.share_2, P0.share_0)
 
         # RSS shares for each party
-        P0.r2_ij_1 = np.copy(P1.r_ij_1) + P0.c_0
+        # Abort mechanism: if parties e.g. P0 holds a different copy of r2_ij_1 then we abort
+        # (it is not implemented as of now, because parties' share are actually copy of its original)
+        P0.r2_ij_1 = np.copy(P1.r2_ij_1) + P0.c_0
 
-        P1.r2_ij_2 = np.copy(P2.r_ij_2) + P1.c_1
+        P1.r2_ij_2 = np.copy(P2.r2_ij_2) + P1.c_1
 
-        P2.r2_ij_0 = np.copy(P0.r_ij_0) + P2.c_2
+        P2.r2_ij_0 = np.copy(P0.r2_ij_0) + P2.c_2
 
         return P0.r2_ij_0, P1.r2_ij_1, P2.r2_ij_2
 
