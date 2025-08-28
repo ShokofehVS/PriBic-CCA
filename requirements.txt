@@ -1,0 +1,10 @@
+numpy>=1.24.3
+sycret>=0.2.8
+Funshade>=1.0.2
+scikit-learn>=1.1.1
+toml>=0.10.2
+setuptools>=65.5.0
+Cython>=3.0.10
+importlib-resources>=5.12.0
+Bottleneck>=1.3.7
+munkres>=1.1.4
